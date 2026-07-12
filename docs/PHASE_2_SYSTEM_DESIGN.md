@@ -1,7 +1,7 @@
 # PHASE 2 — System Design
 
 **Project:** AI Accounting SaaS Backend  
-**Stack:** FastAPI · SQLAlchemy 2.x · MySQL 8 · Alembic · Pydantic v2  
+**Stack:** FastAPI · SQLAlchemy 2.x · PostgreSQL 18 · Alembic · Pydantic v2  
 **Jurisdiction:** India (INR, GST, TDS)  
 **Status:** Design complete — no application code yet  
 **Last updated:** July 2026
@@ -62,12 +62,12 @@ C4Context
     System_Ext(frontend, "React Frontend", "Separate SPA — not in this repo")
     System_Ext(groq, "Groq API", "LLM inference")
     System_Ext(tesseract, "Tesseract OCR", "Local OCR engine")
-    System_Ext(mysql, "MySQL 8", "Primary datastore")
+    System_Ext(postgres, "PostgreSQL 18", "Primary datastore")
 
     Rel(user, frontend, "Uses")
     Rel(admin, frontend, "Administers")
     Rel(frontend, backend, "HTTPS / REST + JWT")
-    Rel(backend, mysql, "SQLAlchemy ORM")
+    Rel(backend, postgres, "SQLAlchemy ORM")
     Rel(backend, groq, "Structured prompts")
     Rel(backend, tesseract, "OCR subprocess")
 ```
@@ -111,7 +111,7 @@ flowchart TB
         AI[AIProvider → Groq]
         OCR[OCRProvider → Tesseract]
         STOR[StorageProvider → Local FS]
-        DB[(MySQL 8)]
+        DB[(PostgreSQL 18)]
         BG[BackgroundTasks]
     end
 
@@ -340,7 +340,7 @@ flowchart TB
 
     subgraph L6["Layer 6 — Infrastructure"]
         direction LR
-        F1[MySQL]
+        F1[PostgreSQL 18]
         F2[Groq]
         F3[Tesseract]
         F4[Local FS]
@@ -369,7 +369,7 @@ sequenceDiagram
     participant SVC as AccountingService
     participant DOM as domain.accounting
     participant REPO as JournalEntryRepository
-    participant DB as MySQL
+    participant DB as PostgreSQL
 
     FE->>MW: POST /journal-entries<br/>Authorization: Bearer JWT<br/>X-Org-Id: {org_id}
     MW->>MW: Attach request_id, parse org header
@@ -464,7 +464,7 @@ sequenceDiagram
     participant BG as BackgroundTasks
     participant OCR as OCRProvider
     participant AI as ExtractionOrchestrator
-    participant DB as MySQL
+    participant DB as PostgreSQL
 
     User->>API: Upload invoice PDF
     API->>DocSvc: create_upload(file, org_id)
@@ -626,7 +626,7 @@ sequenceDiagram
     participant COA as chart_of_accounts
     participant GST as compliance.gst
     participant REPO as AccountingRepository
-    participant DB as MySQL
+    participant DB as PostgreSQL
 
     SVC->>DOM: build JournalEntry from source
     DOM->>COA: resolve_account_codes(org_id, lines)
@@ -652,7 +652,7 @@ sequenceDiagram
 | Accounts Payable | | 11,800.00 |
 | **Totals** | **11,800.00** | **11,800.00** |
 
-All amounts stored as `DECIMAL(19,4)` in MySQL; Python side uses `decimal.Decimal` exclusively — **never `float`**.
+All amounts stored as `DECIMAL(19,4)` in PostgreSQL; Python side uses `decimal.Decimal` exclusively — **never `float`**.
 
 ---
 
@@ -705,7 +705,7 @@ sequenceDiagram
     participant AI as GroqProvider
     participant Router as IntentRouter
     participant AcctSvc as AccountingService
-    participant DB as MySQL
+    participant DB as PostgreSQL
 
     User->>ChatSvc: "Create expense entry ₹5000 for office rent"
     ChatSvc->>ORC: handle(message, org_context, history)
@@ -778,7 +778,7 @@ flowchart TB
     end
 
     subgraph DB
-        DB1[(MySQL — org_id column + indexes)]
+        DB1[(PostgreSQL 18 — org_id column + indexes)]
     end
 
     JWT --> T1
@@ -988,11 +988,11 @@ flowchart LR
 
 | Concern | MVP Choice | Rationale |
 |---------|------------|-----------|
-| DB driver | **Sync SQLAlchemy + pymysql** | Simpler mental model; fewer async footguns for assignment |
+| DB driver | **Sync SQLAlchemy + pypostgresql** | Simpler mental model; fewer async footguns for assignment |
 | Route handlers | `async def` where awaiting AI/HTTP; sync `def` for DB-heavy | FastAPI runs sync DB in threadpool automatically |
 | AI calls | **async** via httpx | Groq API is I/O bound |
 | OCR | **sync** in BackgroundTask | Tesseract is CPU/subprocess — not on request path |
-| Future | SQLAlchemy async + aiomysql | When concurrent DB load justifies complexity |
+| Future | SQLAlchemy async + aiopostgresql | When concurrent DB load justifies complexity |
 
 **Interview answer:** "We use async for I/O-bound external calls (LLM) and sync SQLAlchemy for MVP because our DB access pattern is straightforward request/response. BackgroundTasks keep OCR off the hot path. We can migrate to async sessions without changing Service/Repository interfaces."
 
@@ -1096,7 +1096,7 @@ flowchart TB
 **Decision:** `organization_id` column on all tenant tables; enforced in repository base class.
 
 **Rationale:**
-- Simplest ops (one MySQL instance, one migration path).
+- Simplest ops (one PostgreSQL instance, one migration path).
 - Alembic migrations apply once.
 - Sufficient for assignment; enterprise can upgrade to schema-per-tenant later.
 
@@ -1127,7 +1127,7 @@ flowchart TB
 
 **Context:** Float rounding errors are unacceptable in accounting (₹0.01 breaks reconciliation).
 
-**Decision:** Python `decimal.Decimal`; MySQL `DECIMAL(19,4)`; Pydantic `condecimal`; JSON as string if needed.
+**Decision:** Python `decimal.Decimal`; PostgreSQL `DECIMAL(19,4)`; Pydantic `condecimal`; JSON as string if needed.
 
 **Rationale:** Industry standard for financial software; GST calculations require exact arithmetic.
 
@@ -1189,7 +1189,7 @@ flowchart TB
 
 **Context:** Team learning curve; moderate expected concurrency for assignment demo.
 
-**Decision:** Sync `Session` with pymysql; async routes only for external I/O.
+**Decision:** Sync `Session` with pypostgresql; async routes only for external I/O.
 
 **Rationale:** SQLAlchemy 2.x sync API is mature; async adds session lifecycle complexity without MVP benefit.
 
@@ -1205,7 +1205,7 @@ flowchart TB
 
 ### "Why repository + service instead of fat controllers?"
 
-> "Routers handle HTTP; services handle use cases; repositories handle persistence. If GST rules change, I edit `domain/compliance/gst.py` and unit test it without spinning up FastAPI. If we switch from MySQL to Postgres, I change repositories—not 20 router files. It also enforces that AI never touches repositories directly."
+> "Routers handle HTTP; services handle use cases; repositories handle persistence. If GST rules change, I edit `domain/compliance/gst.py` and unit test it without spinning up FastAPI. If we switch from PostgreSQL to Postgres, I change repositories—not 20 router files. It also enforces that AI never touches repositories directly."
 
 ### "Why intent-based chat instead of RAG-over-SQL?"
 
@@ -1279,7 +1279,7 @@ flowchart TB
 # App
 APP_ENV=development
 SECRET_KEY=
-DATABASE_URL=mysql+pymysql://user:pass@localhost:3306/ai_accounting
+DATABASE_URL=postgresql+psycopg2://user:pass@localhost:5432/ai_accounting
 
 # Providers
 AI_PROVIDER=groq

@@ -9,7 +9,7 @@ from app.services.document_service import DocumentService
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-@router.post("", response_model=DocumentOut)
+@router.post("/upload", response_model=DocumentOut)
 def upload_document(
     organization_id: int = Query(...),
     document_type: str = "invoice",

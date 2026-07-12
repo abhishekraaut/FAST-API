@@ -58,7 +58,7 @@ curl -X POST http://localhost:8000/accounting/journal-entries -H "Content-Type: 
 
 ## Next steps
 
-- Add Alembic migrations and real MySQL support
+- Add Alembic migrations and real PostgreSQL support
 - Implement full CRUD for documents, invoices, expenses, and payments
 - Add JWT-protected multi-tenant middleware and RBAC enforcement
 - Add AI provider abstraction and document processing pipeline

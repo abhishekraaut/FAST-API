@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_db
 from app.core.exceptions import http_exception_from_error
-from app.schemas.auth import TokenResponse, UserCreate, UserOut
+from app.schemas.auth import UserLogin, TokenResponse, UserCreate, UserOut
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -18,7 +18,7 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> UserOut:
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: UserCreate, db: Session = Depends(get_db)) -> TokenResponse:
+def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenResponse:
     try:
         return AuthService(db).login(payload)
     except Exception as exc:
