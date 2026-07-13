@@ -12,7 +12,14 @@ from app.api.v1.routers.invoices import router as invoices_router
 from app.api.v1.routers.ledger import router as ledger_router
 from app.api.v1.routers.organizations import router as organizations_router
 from app.api.v1.routers.vendors import router as vendors_router
+from app.api.v1.routers.reports import router as reports_router
+from app.api.v1.routers.tasks import router as tasks_router
+from app.api.v1.routers.chat import router as chat_router
+from app.api.v1.routers.reconciliation import router as reconciliation_router
 from app.database.session import init_db
+
+
+
 
 app = FastAPI(title="AI Accounting API", version="0.1.0")
 
@@ -35,6 +42,13 @@ app.include_router(ledger_router)
 app.include_router(accounting_router)
 app.include_router(invoices_router)
 app.include_router(expenses_router)
+app.include_router(reports_router)
+app.include_router(tasks_router)
+app.include_router(chat_router)
+app.include_router(reconciliation_router)
+
+
+
 
 
 @app.on_event("startup")

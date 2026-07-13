@@ -136,3 +136,61 @@ class InvoiceService:
         self.db.refresh(invoice)
         self._record_status_event(invoice, InvoiceStatus.DRAFT.value, InvoiceStatus.ISSUED.value, "issued")
         return invoice
+
+    def pay(self, invoice_id: int, organization_id: int) -> Invoice:
+        invoice = self.db.query(Invoice).filter(Invoice.id == invoice_id, Invoice.organization_id == organization_id).first()
+        if not invoice:
+            raise ValueError("Invoice not found")
+
+        if invoice.status != InvoiceStatus.ISSUED.value:
+            raise ValueError(f"Invoice cannot be paid in status: {invoice.status}")
+
+        receivable = self.db.query(Account).filter(Account.organization_id == organization_id, Account.code == "1100").first()
+        cash = self.db.query(Account).filter(
+            Account.organization_id == organization_id,
+            (Account.code == "1101") | (Account.name.like("%Cash%")) | (Account.name.like("%Bank%"))
+        ).first()
+
+        if not cash:
+            cash = self.db.query(Account).filter(Account.organization_id == organization_id, Account.code == "1101").first()
+            if not cash:
+                cash = Account(organization_id=organization_id, code="1101", name="Cash at Bank", account_type="ASSET")
+                self.db.add(cash)
+                self.db.flush()
+
+        if not receivable:
+            raise ValueError("Receivables account not found")
+
+        journal = JournalEntry(
+            organization_id=organization_id,
+            description=f"Payment received for invoice {invoice.invoice_number}",
+            status="posted",
+        )
+        self.db.add(journal)
+        self.db.flush()
+
+        total_amount = Decimal(str(invoice.total))
+        self.db.add(
+            JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_code=cash.code,
+                debit=total_amount,
+                credit=Decimal("0.00"),
+            )
+        )
+        self.db.add(
+            JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_code=receivable.code,
+                debit=Decimal("0.00"),
+                credit=total_amount,
+            )
+        )
+
+        invoice.status = InvoiceStatus.PAID.value
+        self.db.add(invoice)
+        self.db.commit()
+        self.db.refresh(invoice)
+        self._record_status_event(invoice, InvoiceStatus.ISSUED.value, InvoiceStatus.PAID.value, "paid")
+        return invoice
+

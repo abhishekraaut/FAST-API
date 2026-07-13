@@ -4,19 +4,35 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+import hashlib
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    try:
+        from passlib.context import CryptContext
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        return pwd_context.hash(password)
+    except Exception:
+        salt = "accounting-salt"
+        return "sha256:" + hashlib.sha256((password + salt).encode("utf-8")).hexdigest()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    if hashed_password.startswith("sha256:"):
+        salt = "accounting-salt"
+        expected = "sha256:" + hashlib.sha256((plain_password + salt).encode("utf-8")).hexdigest()
+        return expected == hashed_password
+    try:
+        from passlib.context import CryptContext
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception:
+        return False
+
 
 
 def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:

@@ -11,3 +11,8 @@ from app.models.organization import Organization
 from app.models.status_event import StatusEvent
 from app.models.user import User
 from app.models.vendor import Vendor
+from app.models.task import Task
+from app.models.chat import ChatSession, ChatMessage
+from app.models.reconciliation import BankAccount, BankTransaction
+
+

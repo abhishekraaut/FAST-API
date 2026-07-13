@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -18,3 +18,6 @@ class Document(Base):
     status: Mapped[str] = mapped_column(String(50), default="uploaded", nullable=False)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    extracted_data: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
+

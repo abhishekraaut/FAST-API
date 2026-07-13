@@ -20,3 +20,6 @@ class DocumentOut(BaseModel):
     status: str
     description: str | None = None
     error_message: str | None = None
+    ocr_text: str | None = None
+    extracted_data: dict | list | None = None
+

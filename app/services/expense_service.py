@@ -10,6 +10,10 @@ from app.core.statuses import ExpenseStatus
 from app.models.expense import Expense
 from app.models.status_event import StatusEvent
 from app.schemas.expense import ExpenseCreate
+from app.models.account import Account
+from app.models.journal_entry import JournalEntry
+from app.models.journal_entry_line import JournalEntryLine
+
 
 
 class ExpenseService:
@@ -74,3 +78,61 @@ class ExpenseService:
         self.db.refresh(expense)
         self._record_status_event(expense, ExpenseStatus.DRAFT.value, ExpenseStatus.REJECTED.value, "rejected")
         return expense
+
+    def pay(self, expense_id: int, organization_id: int) -> Expense:
+        expense = self.db.query(Expense).filter(Expense.id == expense_id, Expense.organization_id == organization_id).first()
+        if not expense:
+            raise ValueError("Expense not found")
+
+        if expense.status not in [ExpenseStatus.APPROVED.value, ExpenseStatus.DRAFT.value]:
+            raise ValueError(f"Expense cannot be paid in status: {expense.status}")
+
+        exp_acc = self.db.query(Account).filter(Account.organization_id == organization_id, Account.code == "5000").first()
+        if not exp_acc:
+            exp_acc = Account(organization_id=organization_id, code="5000", name="Office Expenses", account_type="EXPENSE")
+            self.db.add(exp_acc)
+
+        cash_acc = self.db.query(Account).filter(
+            Account.organization_id == organization_id,
+            (Account.code == "1101") | (Account.name.like("%Cash%")) | (Account.name.like("%Bank%"))
+        ).first()
+        if not cash_acc:
+            cash_acc = Account(organization_id=organization_id, code="1101", name="Cash at Bank", account_type="ASSET")
+            self.db.add(cash_acc)
+
+        self.db.flush()
+
+        journal = JournalEntry(
+            organization_id=organization_id,
+            description=f"Paid Expense: {expense.vendor_name} - {expense.description or ''}",
+            status="posted",
+        )
+        self.db.add(journal)
+        self.db.flush()
+
+        amount_val = Decimal(str(expense.amount))
+        self.db.add(
+            JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_code=exp_acc.code,
+                debit=amount_val,
+                credit=Decimal("0.00"),
+            )
+        )
+        self.db.add(
+            JournalEntryLine(
+                journal_entry_id=journal.id,
+                account_code=cash_acc.code,
+                debit=Decimal("0.00"),
+                credit=amount_val,
+            )
+        )
+
+        old_status = expense.status
+        expense.status = ExpenseStatus.PAID.value
+        self.db.add(expense)
+        self.db.commit()
+        self.db.refresh(expense)
+        self._record_status_event(expense, old_status, ExpenseStatus.PAID.value, "paid")
+        return expense
+
